@@ -80,33 +80,33 @@ var Baz = {};
 })()
 ;
 
+
+
 // -------------------------------------------------------------------------
 // World
 
 Baz.World = Class.extend ({
     init:function () {
-
-	this.globalEventId = 0;
-	
-	this.lastEventSignal = null;
-	this.lastEventArg = null;
-	
-	this.subscribedSignals = [];
+        this.globalEventId = 0;
+        
+        this.lastEventSignal = null;
+        this.lastEventArg = null;
+        
+        this.subscribedSignals = [];
     },
 
     fireEvent: function(eventSignal, eventArg) {
 
-	this.globalEventId++;
-	this.lastEventSignal = eventSignal;
-	this.lastEventArg = eventArg;
-	
-	// recalculate everything that's been subscribed to.
-	// XXX this doesn't guarantee order.  Should sort based on dependencies...
-	var i=0; var len = this.subscribedSignals.length;
-	for (i=0; i<len; i++) {
-	    var s = this.subscribedSignals[i];
-	    s.calcValue(this);
-	}
+        this.globalEventId++;
+        this.lastEventSignal = eventSignal;
+        this.lastEventArg = eventArg;
+        
+        // recalculate everything that's been subscribed to.
+        // XXX this doesn't guarantee order.  Should sort based on dependencies...
+        for (var i=0, len=this.subscribedSignals.length; i<len; i++) {
+            var s = this.subscribedSignals[i];
+            s.calcValue(this);
+        }
     }
 });
 
@@ -127,35 +127,35 @@ Baz.Signal = Class.extend({
      *
      **/
     init:function(_world, _tag, _inputSignals, _fn) {
-	this.id = Baz.GlobalSignalId++;
-	
-	this.world = _world;
+        this.id = Baz.GlobalSignalId++;
+        
+        this.world = _world;
 
-	this.tag = _tag; // for debugging.
-	
-	this.isInput = false;
-	this.inputSignals = _inputSignals;
-	
-	this.fn = _fn;
-	
-	this.cachedResult = Baz.NeverRun;
-	this.dependsOnInputIds = [];
-	this.lastRunForGlobalEventId = -1;
-	
-	this.subscribers = [];
+        this.tag = _tag; // for debugging.
+        
+        this.isInput = false;
+        this.inputSignals = _inputSignals;
+        
+        this.fn = _fn;
+        
+        this.cachedResult = Baz.NeverRun;
+        this.dependsOnInputIds = [];
+        this.lastRunForGlobalEventId = -1;
+        
+        this.subscribers = [];
     },
 
     setIsInput: function() {
-	this.isInput = true;
+        this.isInput = true;
     },
 
     subscribe: function(fn) {
-	this.subscribers.push(fn);
-	// XXX only add if not already there.
-	this.world.subscribedSignals.push(this);
+        this.subscribers.push(fn);
+        // XXX only add if not already there.
+        this.world.subscribedSignals.push(this);
     },
     unsubscribe: function(fn) {
-	throw new Error("not implemented");
+        throw new Error("not implemented");
     },
     
     /**
@@ -164,71 +164,153 @@ Baz.Signal = Class.extend({
      * Fires subscribers and updates dependencies.
      **/
     calcValue: function(world) {
-	
-	// try cached version
-	
-	// if we've never run, no point in checking cache.
-	if (this.cachedResult !== Baz.NeverRun) {
-	    
-	    // if we've run already for this transaction, we're done.
-	    if (this.lastRunForGlobalEventId >= world.globalEventId)
-		return this.cachedResult;
-	    
-	    // if we don't depend on the input signal, we're done.
-	    if (this.dependsOnInputIds.indexOf(world.lastEventSignal.id) == -1)
-		return this.cachedResult;
-	}
+        
+        // try cached version
+        
+        // if we've never run, no point in checking cache.
+        if (this.cachedResult !== Baz.NeverRun) {
+            
+            // if we've run already for this transaction, we're done.
+            if (this.lastRunForGlobalEventId >= world.globalEventId)
+                return this.cachedResult;
+            
+            // if we don't depend on the input signal, we're done.
+            if (this.dependsOnInputIds.indexOf(world.lastEventSignal.id) == -1)
+                return this.cachedResult;
+        }
 
-	// calculate the function arguments.
-	var args = [];
-	args.push(world);
-	var i; var len = this.inputSignals.length;
-	for (i=0; i<len; i++) {
-	    var s = this.inputSignals[i];
-	    args.push(s);
-	}
+        // calculate the function arguments.
+        var args = [];
+        args.push(world);
+        for (var i=0, len=this.inputSignals.length; i<len; i++) {
+            var s = this.inputSignals[i];
+            args.push(s);
+        }
 
-	// run it.
-	var result = this.fn.apply(this, args);
+        // run it.
+        var result = this.fn.apply(this, args);
 
-	
-	// calculate our new dependencies.
-	this.dependsOnInputIds = [];
-	if (this.isInput)
-	    this.dependsOnInputIds.push(this.id);
-	var i; var len = this.inputSignals.length;
-	for (i=0; i<len; i++) {
-	    var s = this.inputSignals[i];
-	    // add our leaf dependencies on this one.
-	    Array.prototype.push.apply (this.dependsOnInputIds,
-					s.dependsOnInputIds);
-	}
+        
+        // calculate our new dependencies.
+        this.dependsOnInputIds = [];
+        if (this.isInput)
+            this.dependsOnInputIds.push(this.id);
+        for (var i=0, len=this.inputSignals.length; i<len; i++) {
+            var s = this.inputSignals[i];
+            // add our leaf dependencies on this one.
+            Array.prototype.push.apply (this.dependsOnInputIds,
+                                        s.dependsOnInputIds);
+        }
 
-	// we've just recalculated.  Update our transaction id.
-	this.lastRunForGlobalEventId = world.globalEventId;
-	
-	// fire subscribers if we have a new result.
-	if (this.cachedResult !== result) {
-	    var i; var len = this.subscribers.length;
-	    for (i=0; i<len; i++) {
-		var subFn = this.subscribers[i];
-		subFn.call(subFn, result);
-	    }
-	}
-	
-	// update cached result.
-	this.cachedResult = result;
-	
-	return result;
+        // we've just recalculated.  Update our transaction id.
+        this.lastRunForGlobalEventId = world.globalEventId;
+        
+        // fire subscribers if we have a new result.
+        if (this.cachedResult !== result) {
+            for (var i=0, len=this.subscribers.length; i<len; i++) {
+                var subFn = this.subscribers[i];
+                subFn.call(subFn, result);
+            }
+        }
+        
+        // update cached result.
+        this.cachedResult = result;
+        
+        return result;
     }
 });
 
 Baz.InputSignal = Baz.Signal.extend({
     init:function(_world, _tag, _inputSignals, _fn) {
-	this._super(_world, _tag, _inputSignals, _fn);
-	this.setIsInput();
+        this._super(_world, _tag, _inputSignals, _fn);
+        this.setIsInput();
     }
 });
+
+// -------------------------------------------------------------------------
+// Signal constructors (experiment)
+
+
+/** Constant value */
+function makeConstantSignal(world, v) {
+    return new Baz.Signal(world, "constant("+v+")", [],
+                          function(world) {
+                              return v;
+                          });
+}
+
+/** Lambda */
+function makeLambdaSignal(world, closureState, fn) {
+    /*
+      An example lambda.
+
+      Consider the case where the lambda has closure state.  In this
+      case, the lambda itself depends on that closure state, and the
+      lambda Signal needs to be recalculated if that closure state
+      changes.
+     */
+    return new Baz.Signal(world, "lambda "+fn, closureState,
+                          function(world) {
+                              // could be a fancier lambda.
+                              // XXX apply closure state here.
+                              return fn;
+                          });
+}
+
+/** Apply */
+function makeApplySignal(world, fn, args) {
+
+    return new Baz.Signal(world, "apply/"+args.length, [fn].concat(args),
+                   function(world, fn /*, arg...*/) {
+
+                       var args = [];
+                       for (var i=2, len=arguments.length; i<len; i++) {
+                           var arg = arguments[i];
+                           args.push(arg.calcValue(world));
+                       }
+
+                       return fn.calcValue(world).apply (null,args);
+                   });
+}
+
+function makeIfSignal(world, cond, thenVal, elseVal) {
+ 
+    return new Baz.Signal(world, "if", [cond, thenVal, elseVal],
+                          function(world, cond, thenVal, elseVal) {
+                              if (cond.calcValue(world)) {
+                                  return thenVal.calcValue(world);
+                              } else {
+                                  return elseVal.calcValue(world);
+                              }
+                          });
+}
+
+
+/** Convenience: lambda + apply */
+function makeCallSignal(world, fn, args) {
+
+    var fnSignal = makeLambdaSignal(world, [], fn); // no closure.
+
+    var applySignal = makeApplySignal(world, fnSignal, args);
+
+    return applySignal;
+}
+
+
+/** Convenience: makeCall to concat function */
+function makeCallConcatSignal(world, signalsList) {
+
+    return makeCallSignal(world, 
+                          function(/*value...*/) {
+                              var r = "";
+                              for (var i=0, len=arguments.length; i<len; i++) {
+                                  var value = arguments[i];
+                                  r+="<div>"+ value+ "</div>";
+                              }
+                              return r;
+                          },
+                          signalsList);
+}
 
 
 
@@ -239,183 +321,90 @@ Baz.InputSignal = Baz.Signal.extend({
 
 
 function test1(world, time) {
-
-    var sig = new Baz.Signal(world, "x/1000%10 + x/1000%10", [time, time], 
-			 function(world, a, b) {
-			     var a_ = Math.floor(a.calcValue(world) / 1000) % 10;
-			     var b_ = Math.floor(b.calcValue(world) / 1000) % 10;
-			     return a_+"+"+b_+"="+(a_+b_); 
-			 });
+    var sig =
+        new Baz.Signal(world, "x/1000%10 + x/1000%10", [time, time], 
+                       function(world, a, b) {
+                           var a_ = Math.floor(a.calcValue(world) / 1000) % 10;
+                           var b_ = Math.floor(b.calcValue(world) / 1000) % 10;
+                           return a_+"+"+b_+"="+(a_+b_); 
+                       });
 
     return sig;
 }
 
 function testLambda(world, time) {
-
-    /*
-      
-     */
-    var two =
-	new Baz.Signal(world, "constant(2)", [], 
-		       function(world) {
-			   return 2;
-		       });
-
-    /*
-      An example lambda.
-
-      Consider the case where the lambda has closure state.  In this
-      case, the lambda itself depends on that closure state, and the
-      lambda Signal needs to be recalculated if that closure state
-      changes.
-     */
-    var multFunc =
-	new Baz.Signal(world, "a*b", [] /*closure state if any*/,
-		       function(world) {
-			   // could be a fancier lambda.
-			   return function(a,b)
-			   {
-			       return a*b;
-			   }
-		       });
-
-    var apply = makeApplySignal(world, time, multFunc, two, time);
-
-    return apply;
-}
-
-function makeApplySignal(world, time, fn) {
-    var signals = [];
-    var i; var len=arguments.length;
-    for (i=2; i<len; i++) {
-	signals.push(arguments[i]);
-    }
-
-    return new Baz.Signal(world, "apply/"+(len-3), signals,
-		   function(world, fn, a, b) {
-
-		       var args = [];
-		       var i; var len=arguments.length;
-		       for (i=2; i<len; i++) {
-			   var arg = arguments[i];
-			   args.push(arg.calcValue(world));
-		       }
-
-		       return fn.calcValue(world).apply (null,args);
-		   });
+    var two = makeConstantSignal(world, 2);
+    return makeCallSignal(world, function(a,b) {return a*b;}, [two, time]);
 }
 
 function testIf(world, time) {
 
     var cond =
-	new Baz.Signal(world, "x/1000%2==0", [time],
-		       function(world, time) {
-			   // in practice would be several Signals.
-			   var r = Math.floor(time.calcValue(world) / 1000) % 2;
+        new Baz.Signal(world, "x/1000%2==0", [time],
+                       function(world, time) {
+                           // in practice would be several Signals.
+                           var r = Math.floor(time.calcValue(world) / 1000) % 2;
 
-			   return r === 0;
-		       });
+                           return r === 0;
+                       });
 
-    var thenVal = makeConstantSignal(world, time, "Is even");
-
-    var elseVal = makeConstantSignal(world, time, "Is odd");
-
-    var ifVal =
-	new Baz.Signal(world, "if", [cond, thenVal, elseVal],
-		       function(world, cond, thenVal, elseVal) {
-			   // XXX here is the issue: we're evaluating 
-			   // 'elseVal' even if we shouldn't.
-			   if (cond.calcValue(world)) {
-			       return thenVal.calcValue(world);
-			   } else {
-			       return elseVal.calcValue(world);
-			   }
-		       });
-
+    var thenVal = makeConstantSignal(world, "Is even");
+    var elseVal = makeConstantSignal(world, "Is odd");
+    var ifVal = makeIfSignal(world, cond, thenVal, elseVal);
     return ifVal;
-
 }
 
-function makeConstantSignal(world, time, v) {
-    return new Baz.Signal(world, "constant("+v+")", [],
-			  function(world) {
-			      return v;
-			  });
-}
-
-
-function makeConcatSignal(world, time) {
-
-
-    var inputs = [];
-    var i; var len = arguments.length;
-    for (i=2; i<len; i++) {
-	var sig = arguments[i];
-	inputs.push(sig);
-    }
-
-    return new Baz.Signal(world, "concat", inputs,
-			  function(world, sig1, sig2, sig3) {
-
-			      var r = "";
-
-			      var i; var len = arguments.length;
-			      for (i=1; i<len; i++) {
-				  var sig = arguments[i];
-				  r+="<div>"+ sig.calcValue(world)+ "</div>";
-			      }
-			      
-			      return r;
-			  });
+function testConstant(world, time) {
+    return makeCallSignal(world, function(a,b) {return a*b;}, 
+                          [makeConstantSignal(world, 2),
+                           makeConstantSignal(world, 2)]);
 }
 
 
 function testBaz() {
-
     var world = new Baz.World();
 
     var time =
-	new Baz.InputSignal(world, "time", [], 
-			    function(world) {
-				return new Date().getTime();
-			    });
+        new Baz.InputSignal(world, "time", [], 
+                            function(world) {
+                                return new Date().getTime();
+                            });
 
 
-    var sig=makeConcatSignal(world, time, 
-			     testLambda(world, time),
-			     testIf(world,time),
-			     test1(world,time));
+    var sig=makeCallConcatSignal(world,
+                                 [testLambda(world, time),
+                                  testIf(world,time),
+                                  test1(world,time),
+                                  testConstant(world,time)]);
     
 
     sig.subscribe(function(value) {
-	document.getElementById("output").innerHTML = value;
+        document.getElementById("output").innerHTML = value;
     });
 
     var trace =
-	new Baz.Signal(world, "trace", [sig],
-		       function(world, sig) {
-			   var r = traceSignal(world, sig);
-			   return r;
-		       });
+        new Baz.Signal(world, "trace", [sig],
+                       function(world, sig) {
+                           var r = generateTrace(world, sig);
+                           return r;
+                       });
 
 
     trace.subscribe(function(value) {
-	document.getElementById("trace").innerHTML = value;
+        document.getElementById("trace").innerHTML = value;
     });
 
     // XXX fake out event.
     
     window.setInterval(function() {
-	world.fireEvent(time, null);
+        world.fireEvent(time, null);
     }, 1);
-
-
 }
 
 
 
 
-function traceSignal (world, sig) {
+function generateTrace (world, sig) {
 
     var r = "";
 
@@ -423,15 +412,14 @@ function traceSignal (world, sig) {
     
     // ensure that the value is calculated.
     r+= "<li><span class='signalTag'>"+sig.tag+"</span> = "
-	+"<span class='signalValue'>"+sig.cachedResult+"</span>" +
-	"<span class='details'>inputIds="+
-	sig.dependsOnInputIds+
-	"</span>";
+        +"<span class='signalValue'>"+sig.cachedResult+"</span>" +
+        "<span class='details'>inputIds="+
+        sig.dependsOnInputIds+
+        "</span>";
     
-    var i; var len=sig.inputSignals.length;
-    for (i=0; i<len; i++) {
-	var s = sig.inputSignals[i];
-	r+= traceSignal(world, s);
+    for (var i=0, len=sig.inputSignals.length; i<len; i++) {
+        var s = sig.inputSignals[i];
+        r+= generateTrace(world, s);
     }
 
 
